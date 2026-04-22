@@ -1,0 +1,37 @@
+---
+title: "web_fetch tool"
+description: "Fetches the raw body of any HTTP or HTTPS URL and returns it as a string. Useful for reading API documentation, JSON feeds, or any web resource."
+---
+
+The `web_fetch` tool performs an HTTP GET request to the given URL and returns the raw response body as a string. It is useful for letting the LLM read external documentation, query public APIs, or retrieve any web resource during a session.
+
+## Arguments
+
+<ParamField body="url" type="string" required>
+  Full URL to fetch. Must include the scheme (`http://` or `https://`).
+</ParamField>
+
+## Return value
+
+Returns the raw response body as a string — HTML, JSON, plain text, or any other content type the server returns. On failure the tool returns:
+
+```
+ERROR: tools calling error: <message>
+```
+
+<Note>
+The HTTP client enforces a **1-minute timeout**. Requests that take longer are cancelled and return an error.
+</Note>
+
+<Note>
+The tool returns the raw body without any parsing or conversion. The LLM is responsible for interpreting HTML, extracting JSON fields, or otherwise processing the response.
+</Note>
+
+## Example LLM call
+
+```json
+{
+  "name": "web_fetch",
+  "arguments": {"url": "https://pkg.go.dev/github.com/mishankov/hrns/loop"}
+}
+```

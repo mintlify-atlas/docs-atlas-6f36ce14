@@ -1,0 +1,115 @@
+---
+title: "Skills: contextual knowledge for agents"
+description: "Markdown files with YAML frontmatter that inject domain knowledge into the agent's system prompt and are loaded on demand via a built-in tool."
+---
+
+Skills are markdown files that encode domain knowledge — coding conventions, project standards, API patterns — and make that knowledge available to the agent without stuffing everything into the system prompt at startup. Each skill is discovered from the filesystem, advertised to the model as a named capability in the system prompt, and read in full only when the model calls the `load_skill` tool.
+
+## Skill file format
+
+Skills are stored as `SKILL.md` files inside a two-level directory hierarchy: a root skills directory contains one subdirectory per skill, and each subdirectory contains exactly one `SKILL.md`. The file starts with YAML frontmatter that provides the `name` and `description` the agent sees before loading the full content.
+
+```markdown
+---
+name: "go-testing"
+description: "Conventions and patterns for writing Go tests"
+---
+
+# Go Testing Guidelines
+
+Always use external test packages (package foo_test).
+Use only the standard library testing package.
+...
+```
+
+The `name` field is the identifier used when calling `load_skill`. The `description` field is what the model reads in the system prompt to decide which skill to load.
+
+## Discovery paths
+
+The `skills` package searches two root paths by default:
+
+| Constant | Path | Scope |
+|---|---|---|
+| `DefaultGlobalRootPath` | `~/.agents/skills/<skill-name>/SKILL.md` | User-level, shared across projects |
+| `DefaultLocalRootPath` | `./.agents/skills/<skill-name>/SKILL.md` | Project-level, relative to working directory |
+
+Both paths are searched on every run. If a skill with the same name exists in both locations, the last one encountered wins — in practice, pass local paths after global paths to give local skills precedence.
+
+<Note>
+Missing root directories are silently skipped. You do not need both paths to exist on every machine.
+</Note>
+
+## How skills are loaded
+
+<Steps>
+  <Step title="Discover and parse skills">
+    `LoadAllSkills(rootPaths)` walks each root path one level deep, finds every `SKILL.md`, and parses the frontmatter into a `Skill` struct containing the path, name, and description. File content is not read at this stage.
+
+    ```go
+    loadedSkills, err := skills.LoadAllSkills([]string{
+        skills.DefaultGlobalRootPath,
+        skills.DefaultLocalRootPath,
+    })
+    ```
+  </Step>
+
+  <Step title="Build the load_skill tool">
+    `NewLoadSkillTool` wraps the discovered skill list in a `loop.Tool` implementation. When the model calls `load_skill` with a skill name, the tool reads the full file content from disk and returns it as a string.
+
+    ```go
+    loadSkillTool := skills.NewLoadSkillTool(loadedSkills)
+    ```
+  </Step>
+
+  <Step title="Advertise skills in the system prompt">
+    Append a short listing of available skills — name and description — to the system prompt so the model knows what it can request.
+
+    ```go
+    systemPrompt += "\n\nYou have access to the following skills:"
+    for _, skill := range loadedSkills {
+        systemPrompt += "\n- " + skill.Name + ": " + skill.Description
+    }
+    systemPrompt += "\nYou can load them with the `load_skill` tool."
+    ```
+  </Step>
+
+  <Step title="Register the tool and start the loop">
+    Pass `loadSkillTool` alongside your other tools when creating the loop. The model will call `load_skill` whenever it determines the skill content is needed to complete a task.
+
+    ```go
+    agnt := loop.New(client, systemPrompt, map[string]loop.Tool{
+        "load_skill": loadSkillTool,
+        // ... other tools
+    })
+    ```
+  </Step>
+</Steps>
+
+## Complete wiring example
+
+```go
+loadedSkills, err := skills.LoadAllSkills([]string{
+    skills.DefaultGlobalRootPath,
+    skills.DefaultLocalRootPath,
+})
+if err != nil {
+    log.Fatalf("failed to load skills: %v", err)
+}
+loadSkillTool := skills.NewLoadSkillTool(loadedSkills)
+
+// Add to system prompt
+systemPrompt += "\n\nYou have access to the following skills:"
+for _, skill := range loadedSkills {
+    systemPrompt += "\n- " + skill.Name + ": " + skill.Description
+}
+systemPrompt += "\nYou can load them with the `load_skill` tool."
+
+agnt := loop.New(client, systemPrompt, map[string]loop.Tool{
+    "load_skill": loadSkillTool,
+    // ... other tools
+})
+```
+
+<Tip>
+Use skills to encode project-specific conventions, coding standards, or domain knowledge that is too detailed for a system prompt but important enough to retrieve on demand. Good candidates include style guides, architecture decisions, and API usage patterns.
+</Tip>

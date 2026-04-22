@@ -1,0 +1,82 @@
+---
+title: "hrns terminal interface (TUI)"
+description: "The hrns TUI provides an interactive multi-turn terminal interface for talking to an AI agent, reading stdin line-by-line and streaming the response."
+---
+
+The hrns TUI provides an interactive multi-turn terminal interface for talking to an AI agent. It reads stdin line-by-line, sends each message to the agent loop, and streams the response back to your terminal as it arrives — including reasoning tokens, tool calls, and errors.
+
+## How it works
+
+<Steps>
+  <Step title="Create a TUIApp">
+    Call `tui.New()` to create a `TUIApp` instance. It holds no configuration — all session state is managed inside `Run`.
+
+    ```go
+    tuiapp := tui.New()
+    ```
+  </Step>
+
+  <Step title="Start the interactive loop">
+    Pass a context and a `loop.Loop` to `TUIApp.Run`. The method blocks, reading lines from stdin until the process is interrupted.
+
+    ```go
+    tuiapp.Run(ctx, agnt)
+    ```
+  </Step>
+
+  <Step title="Stream chunks to the terminal">
+    For each user message, `Run` launches the agent loop in a goroutine and reads every chunk from `agnt.Chunks()`:
+
+    - **Message chunks** (`ChunkTypeMessage`) — response text printed as it arrives.
+    - **Reasoning chunks** (`ChunkTypeReasoning`) — printed in grey (RGB 150, 150, 150) to visually separate thinking from the final answer.
+    - **Tool call chunks** (`ChunkTypeToolCallStart`) — tool name printed in red, arguments in bright yellow.
+    - **Error chunks** (`ChunkTypeError`) — printed in red.
+  </Step>
+</Steps>
+
+## Minimal usage example
+
+```go
+tuiapp := tui.New()
+tuiapp.Run(ctx, agnt)
+```
+
+`Run` takes a `loop.Loop` value directly. Pass the dereferenced result of `loop.New()` as shown — `*agnt`.
+
+## TUI startup output
+
+When the session starts, hrns prints two lines before accepting input:
+
+```text
+HRNS loop. dev
+Model: kimi-k2.6
+```
+
+The default model is `kimi-k2.6` (defined at `tui/tui.go:24`). You can switch models at any time with the `/model` command without restarting the process.
+
+## Multi-turn conversations
+
+The TUI accumulates message history across turns within a single session.
+
+- Each user message is appended to the `messages` slice before `RunLoop` is called.
+- After every assistant turn, the TUI calls `agnt.Messages()` to retrieve the full updated history, including any tool call and result messages the loop appended internally.
+- The updated history becomes the input for the next turn, preserving full conversational context.
+- To reset the history and start fresh, use the `/new` command.
+
+<Note>
+  Message history is kept in memory only. Restarting the process or running `/new` clears it entirely. Persistent sessions are planned but not yet implemented.
+</Note>
+
+## Related pages
+
+<CardGroup cols={3}>
+  <Card title="Slash commands" icon="terminal" href="/tui/commands">
+    Control the session with `/model`, `/new`, and `/help`.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    Set your API key and base URL via environment variables.
+  </Card>
+  <Card title="Agent loop" icon="arrows-rotate" href="/concepts/agent-loop">
+    Understand how chunk streaming and tool dispatch work under the hood.
+  </Card>
+</CardGroup>

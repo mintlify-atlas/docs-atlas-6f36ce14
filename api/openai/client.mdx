@@ -1,0 +1,201 @@
+---
+title: "openai package — Client"
+description: "Configure and use the hrns OpenAI-compatible streaming client, including constructor options, SSE event handling, error types, and custom HTTP transport."
+---
+
+The `openai` package provides a lightweight, dependency-free HTTP client for any OpenAI-compatible API. It supports both streaming (Server-Sent Events) and non-streaming chat completion requests, and is designed to be composed into higher-level harness loops rather than used in isolation.
+
+## Constructor
+
+```go
+func NewClient(opts ...ClientOption) *Client
+```
+
+`NewClient` returns a `*Client` with sensible defaults. Pass zero or more `ClientOption` functions to override them.
+
+<ParamField body="WithBaseURL" type="ClientOption">
+  Sets the base URL for all requests. Trailing slashes are stripped automatically.
+
+  Default: `https://api.openai.com/v1`
+
+  ```go
+  openai.WithBaseURL("https://my-proxy.example.com/v1")
+  ```
+</ParamField>
+
+<ParamField body="WithAPIKey" type="ClientOption">
+  Sets the Bearer token sent in the `Authorization` header on every request. If empty, the header is omitted entirely.
+
+  ```go
+  openai.WithAPIKey(os.Getenv("OPENAI_API_KEY"))
+  ```
+</ParamField>
+
+<ParamField body="WithHTTPClient" type="ClientOption">
+  Replaces the default `*http.Client`. Use this to configure TLS settings, proxies, connection pooling, or per-request timeouts.
+
+  Default: `&http.Client{Timeout: 5 * time.Minute}`
+
+  ```go
+  openai.WithHTTPClient(&http.Client{
+      Timeout: 10 * time.Minute,
+      Transport: &http.Transport{
+          TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+      },
+  })
+  ```
+</ParamField>
+
+## Client struct
+
+```go
+type Client struct {
+    BaseURL    string
+    APIKey     string
+    HTTPClient *http.Client
+    Headers    map[string]string
+}
+```
+
+All fields are exported. You can set `Headers` directly to attach static key-value pairs to every request — useful for routing headers, tenant identifiers, or gateway tokens.
+
+```go
+client := openai.NewClient(openai.WithAPIKey(key))
+client.Headers = map[string]string{
+    "X-Tenant-ID": "acme",
+}
+```
+
+## Methods
+
+### StreamChatCompletion
+
+```go
+func (c *Client) StreamChatCompletion(
+    ctx context.Context,
+    reqBody ChatCompletionRequest,
+) (<-chan StreamEvent, error)
+```
+
+Opens an SSE connection and returns a read-only channel of `StreamEvent` values. The method sets `Stream: true` on the request body automatically — you do not need to set it yourself.
+
+The channel is closed by the goroutine once the `[DONE]` sentinel is received or the connection drops. Cancelling `ctx` terminates the underlying request and the goroutine exits cleanly.
+
+Returns an error synchronously (before the channel) if `Model` or `Messages` are empty, or if the server responds with a non-2xx status code.
+
+### CreateChatCompletion
+
+```go
+func (c *Client) CreateChatCompletion(
+    ctx context.Context,
+    reqBody ChatCompletionRequest,
+) (*ChatCompletionResponse, error)
+```
+
+Sends a standard (non-streaming) POST to `/chat/completions` and returns the fully parsed `*ChatCompletionResponse`. Returns an `*APIError` on any non-2xx response.
+
+## StreamEvent
+
+```go
+type StreamEvent struct {
+    Data  *ChatCompletionResponse
+    Done  bool
+    Raw   []byte
+    Error error
+}
+```
+
+<ResponseField name="Data" type="*ChatCompletionResponse">
+  The parsed response chunk. Non-nil for normal delta events. Nil when `Done` is true or `Error` is set.
+</ResponseField>
+
+<ResponseField name="Done" type="bool">
+  True when the `[DONE]` sentinel line is received. This is always the final event on the channel; no further events follow.
+</ResponseField>
+
+<ResponseField name="Raw" type="[]byte">
+  The raw SSE payload bytes, including for `[DONE]` events. Useful for logging or debugging.
+</ResponseField>
+
+<ResponseField name="Error" type="error">
+  Set when JSON parsing fails or the scanner encounters a read error. Treat this as a terminal event.
+</ResponseField>
+
+## APIError
+
+`APIError` is returned whenever the server responds with a non-2xx HTTP status code. It implements the `error` interface.
+
+```go
+type APIError struct {
+    StatusCode int
+    Message    string
+    Body       []byte
+}
+
+func (e *APIError) Error() string
+// → "chat completion API error: status=401 message=Incorrect API key provided"
+```
+
+<ResponseField name="StatusCode" type="int">
+  The HTTP status code returned by the server.
+</ResponseField>
+
+<ResponseField name="Message" type="string">
+  The human-readable error message extracted from the response body. hrns looks for `error.message` and falls back to the raw body string.
+</ResponseField>
+
+<ResponseField name="Body" type="[]byte">
+  The full, unmodified response body. Useful for inspecting provider-specific error envelopes.
+</ResponseField>
+
+Use a type assertion to distinguish API errors from network errors:
+
+```go
+var apiErr *openai.APIError
+if errors.As(err, &apiErr) {
+    fmt.Println(apiErr.StatusCode, apiErr.Message)
+}
+```
+
+## Usage example
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+
+    "github.com/mishankov/hrns/openai"
+)
+
+func main() {
+    client := openai.NewClient(
+        openai.WithBaseURL("https://api.openai.com/v1"),
+        openai.WithAPIKey(os.Getenv("HRNS_KEY")),
+    )
+
+    stream, err := client.StreamChatCompletion(context.Background(), openai.ChatCompletionRequest{
+        Model:    "gpt-4o",
+        Messages: []openai.Message{openai.UserMessage("Hello!")},
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    for event := range stream {
+        if event.Done {
+            break
+        }
+        if event.Error != nil {
+            log.Fatal(event.Error)
+        }
+        // process event.Data
+    }
+}
+```
+
+<Tip>
+  For local or self-signed TLS endpoints, pass a custom `*http.Client` via `WithHTTPClient` with `InsecureSkipVerify: true` in the TLS config. Alternatively, set `HRNS_SKIP_VERIFY=true` at the harness top level to apply the skip globally.
+</Tip>

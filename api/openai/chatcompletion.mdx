@@ -1,0 +1,190 @@
+---
+title: "openai package — ChatCompletion types"
+description: "Reference for ChatCompletionRequest, ChatCompletionResponse, ChatCompletionAccumulator, and the Tool struct used for function-calling in hrns."
+---
+
+The `openai` package defines the request and response types for the `/chat/completions` endpoint. These types handle both streaming and non-streaming calls, carry an `Extra` map for round-trip preservation of non-standard fields, and are shared between `StreamChatCompletion` and `CreateChatCompletion`. In most agent harness usage, you build a `ChatCompletionRequest`, iterate over `StreamEvent.Data` chunks, and feed them into a `ChatCompletionAccumulator` to reconstruct the full response.
+
+## ChatCompletionRequest
+
+```go
+type ChatCompletionRequest struct {
+    Model            string    `json:"model"`
+    Messages         []Message `json:"messages"`
+    MaxTokens        *int      `json:"max_tokens,omitempty"`
+    Temperature      *float64  `json:"temperature,omitempty"`
+    TopP             *float64  `json:"top_p,omitempty"`
+    N                *int      `json:"n,omitempty"`
+    Stop             any       `json:"stop,omitempty"`
+    Stream           bool      `json:"stream,omitempty"`
+    PresencePenalty  *float64  `json:"presence_penalty,omitempty"`
+    FrequencyPenalty *float64  `json:"frequency_penalty,omitempty"`
+    User             string    `json:"user,omitempty"`
+    Tools            []Tool    `json:"tools,omitempty"`
+    ToolChoice       any       `json:"tool_choice,omitempty"`
+    ResponseFormat   any       `json:"response_format,omitempty"`
+    Logprobs         *bool     `json:"logprobs,omitempty"`
+    TopLogprobs      *int      `json:"top_logprobs,omitempty"`
+    Extra            map[string]any `json:"-"`
+}
+```
+
+<ParamField body="Model" type="string" required>
+  The model identifier, e.g. `"gpt-4o"` or `"claude-3-5-sonnet-20241022"`. An empty string causes the client to return an error before the request is sent.
+</ParamField>
+
+<ParamField body="Messages" type="[]Message" required>
+  The ordered conversation history. Must contain at least one message; an empty slice causes the client to return an error before the request is sent.
+</ParamField>
+
+<ParamField body="Tools" type="[]Tool">
+  Function definitions the model may call. Each entry describes one callable tool. See the [Tool struct](#tool) section below.
+</ParamField>
+
+<ParamField body="ToolChoice" type="any">
+  Controls which tool (if any) the model must call. Accepts `"none"`, `"auto"`, `"required"`, or an object like `{"type":"function","function":{"name":"my_fn"}}`.
+</ParamField>
+
+<ParamField body="Stream" type="bool" default="false">
+  When true, the server sends incremental SSE chunks instead of a single response. `StreamChatCompletion` sets this to `true` automatically. You do not need to set it yourself.
+</ParamField>
+
+<ParamField body="MaxTokens" type="*int">
+  Upper bound on generated tokens. Uses a pointer so that `0` is distinguishable from "not set".
+</ParamField>
+
+<ParamField body="Temperature" type="*float64">
+  Sampling temperature between 0 and 2. Higher values produce more varied output. Uses a pointer so that `0.0` is distinguishable from "not set".
+</ParamField>
+
+<ParamField body="ResponseFormat" type="any">
+  Controls output format. Pass `map[string]any{"type": "json_object"}` to enable JSON mode.
+</ParamField>
+
+<ParamField body="Extra" type="map[string]any">
+  Arbitrary additional fields merged into the JSON body at marshal time. Use this for provider-specific parameters not covered by the struct (e.g. `thinking`, `max_completion_tokens`).
+</ParamField>
+
+## ChatCompletionResponse
+
+```go
+type ChatCompletionResponse struct {
+    ID                string                     `json:"id,omitempty"`
+    Object            string                     `json:"object,omitempty"`
+    Created           int64                      `json:"created,omitempty"`
+    Model             string                     `json:"model,omitempty"`
+    Choices           []ChatCompletionChoice     `json:"choices,omitempty"`
+    Usage             map[string]any             `json:"usage,omitempty"`
+    SystemFingerprint string                     `json:"system_fingerprint,omitempty"`
+    Extra             map[string]any             `json:"-"`
+    Raw               map[string]json.RawMessage `json:"-"`
+}
+```
+
+<ResponseField name="ID" type="string">
+  The unique identifier for this completion, assigned by the server.
+</ResponseField>
+
+<ResponseField name="Choices" type="[]ChatCompletionChoice">
+  One entry per completion candidate. In streaming mode each chunk carries a partial delta; use `ChatCompletionAccumulator` to merge them. Each `ChatCompletionChoice` contains:
+
+  - `Index` (`int`) — zero-based candidate index
+  - `Message` (`Message`) — the full message (non-streaming)
+  - `Delta` (`*Message`) — incremental content chunk (streaming)
+  - `FinishReason` (`string`) — `"stop"`, `"tool_calls"`, `"length"`, etc.
+</ResponseField>
+
+<ResponseField name="Usage" type="map[string]any">
+  Token consumption statistics. Typed as `map[string]any` so that extended usage fields (e.g. `prompt_tokens_details`) from any provider are preserved without a fixed schema.
+</ResponseField>
+
+<ResponseField name="Extra" type="map[string]any">
+  Unknown top-level JSON keys captured during unmarshalling.
+</ResponseField>
+
+<ResponseField name="Raw" type="map[string]json.RawMessage">
+  The complete raw JSON of the response, keyed by field name. Available for inspection or re-marshalling without information loss.
+</ResponseField>
+
+## ChatCompletionAccumulator
+
+`ChatCompletionAccumulator` merges streaming `ChatCompletionResponse` chunks into a single coherent response. It handles delta concatenation for text content, tool call argument streaming, and per-choice metadata.
+
+```go
+type ChatCompletionAccumulator struct { /* unexported */ }
+
+func (a *ChatCompletionAccumulator) AddChunk(chunk ChatCompletionResponse)
+func (a *ChatCompletionAccumulator) Choices() []ChatCompletionChoice
+```
+
+Call `AddChunk` for each non-done `StreamEvent.Data`, then call `Choices()` to read the assembled result after the stream closes.
+
+```go
+var acc openai.ChatCompletionAccumulator
+
+for event := range stream {
+    if event.Done {
+        break
+    }
+    if event.Error != nil {
+        log.Fatal(event.Error)
+    }
+    acc.AddChunk(*event.Data)
+}
+
+choices := acc.Choices()
+if len(choices) > 0 {
+    fmt.Println(choices[0].Message.Content)
+}
+```
+
+`Choices()` returns choices sorted by `Index`, so `choices[0]` is always the first candidate regardless of the order chunks arrived.
+
+<Note>
+  `ChatCompletionAccumulator` is a value type with an unexported map field. Declare it as a local variable (not a pointer) and pass it by pointer to `AddChunk`. Do not copy an accumulator after the first `AddChunk` call.
+</Note>
+
+## Tool
+
+The `Tool` struct describes a function the model may invoke.
+
+```go
+type Tool struct {
+    Type     string         `json:"type"`
+    Function map[string]any `json:"function,omitempty"`
+    Extra    map[string]any `json:"-"`
+}
+```
+
+<ParamField body="Type" type="string" required>
+  Always `"function"` for function-calling tools.
+</ParamField>
+
+<ParamField body="Function" type="map[string]any">
+  A free-form map describing the function. Typically contains `name` (string), `description` (string), and `parameters` (JSON Schema object).
+
+  ```go
+  openai.Tool{
+      Type: "function",
+      Function: map[string]any{
+          "name":        "list_files",
+          "description": "List files in a directory.",
+          "parameters": map[string]any{
+              "type": "object",
+              "properties": map[string]any{
+                  "path": map[string]any{"type": "string"},
+              },
+              "required": []string{"path"},
+          },
+      },
+  }
+  ```
+</ParamField>
+
+<ParamField body="Extra" type="map[string]any">
+  Additional fields merged into the serialised tool object. Used for provider-specific extensions.
+</ParamField>
+
+<Tip>
+  You rarely need to construct `Tool` values by hand. When you pass tools to `loop.New()`, it builds the correct JSON Schema and `Tool` structs automatically from the `Description()` and `Arguments()` methods of each `loop.Tool` implementation.
+</Tip>

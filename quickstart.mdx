@@ -1,80 +1,99 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Get started with hrns"
+description: "Clone, build, and chat with an AI agent in minutes. Learn how to run hrns from the terminal and embed the loop package in your own Go program."
 ---
 
-## Get started in three steps
+hrns ships as a single Go binary with no external runtime dependencies. The steps below take you from a fresh checkout to a running agent session, and then show you how to use the `loop` package directly to build a custom agent.
 
-Get your documentation site running locally and make your first customization.
+## Run the default CLI
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Prerequisites">
+    You need Go 1.25 or later. Verify your version:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    go version
+    ```
+  </Step>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/mishankov/hrns
+    cd hrns
+    ```
+  </Step>
+  <Step title="Build the binary">
+    ```bash
+    go build -o hrns .
+    ```
+  </Step>
+  <Step title="Set environment variables">
+    hrns reads three environment variables at startup. At minimum you need `HRNS_KEY` and `HRNS_BASE_URL`.
 
-### Step 2: Deploy your changes
+    ```bash
+    export HRNS_KEY=your-api-key
+    export HRNS_BASE_URL=https://api.openai.com/v1
+    # Optional: skip TLS verification for local endpoints
+    export HRNS_SKIP_VERIFY=false
+    ```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    See [Configuration](/configuration) for a full description of each variable.
+  </Step>
+  <Step title="Run hrns">
+    ```bash
+    ./hrns
+    ```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    The terminal UI starts and displays the active model name.
+  </Step>
+  <Step title="Type a message and press Enter">
+    Type any message at the prompt and press **Enter**. The agent streams its response token-by-token and shows each tool call as it happens. When the model stops requesting tools the prompt returns for your next message.
+  </Step>
+</Steps>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+## Build a custom agent programmatically
 
-### Step 3: Go live
+You can import the `loop` package directly to create agents with a custom system prompt, a different tool set, or your own UI. The example below reproduces what the default `main.go` does, stripped to its essentials:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```go
+package main
 
-## Next steps
+import (
+    "context"
+    "net/http"
 
-Now that you have your docs running, explore these key features:
+    "github.com/mishankov/hrns/loop"
+    "github.com/mishankov/hrns/openai"
+    "github.com/mishankov/hrns/tools"
+    "github.com/mishankov/hrns/tui"
+)
 
-<CardGroup cols={2}>
+func main() {
+    ctx := context.Background()
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+    client := openai.NewClient(
+        openai.WithBaseURL("https://api.openai.com/v1"),
+        openai.WithAPIKey("your-api-key"),
+    )
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    agnt := loop.New(
+        client,
+        "You are a helpful coding assistant.",
+        map[string]loop.Tool{
+            "read_file":   tools.ReadFileTool,
+            "list_files":  tools.ListFilesTool,
+            "write_file":  tools.WriteFileTool,
+            "run_command": tools.CommandTool,
+            "web_fetch":   tools.WebFetchTool,
+        },
+    )
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+    tuiapp := tui.New()
+    tuiapp.Run(ctx, *agnt)
+}
+```
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+`loop.New` accepts any value that satisfies `ChatCompletionStreamer`, so you can swap in a different HTTP client or a mock for testing without changing the rest of your code.
 
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+<Tip>
+  Once the TUI is running, type `/help` to see all available slash commands, including `/model <name>` to switch models mid-session and `/new` to start a fresh conversation without restarting the binary.
+</Tip>

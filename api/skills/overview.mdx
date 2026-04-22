@@ -1,0 +1,104 @@
+---
+title: "skills package — loading and discovery"
+description: "Functions and types for discovering, parsing, and loading SKILL.md files from one or more root directories into a Go agent harness."
+---
+
+The `skills` package provides everything you need to locate SKILL.md files on disk, parse their YAML frontmatter, and collect the resulting metadata into `Skill` values that the rest of the harness can use. Discovery walks one level deep inside each root path, so each skill lives in its own named subdirectory.
+
+## Constants
+
+| Name | Value |
+|---|---|
+| `DefaultGlobalRootPath` | `~/.agents/skills` |
+| `DefaultLocalRootPath` | `./.agents/skills` |
+
+Pass these to any function that accepts `rootPaths` to cover both user-wide and project-local skill directories.
+
+## Skill struct
+
+```go
+type Skill struct {
+    Path        string
+    Name        string
+    Description string
+}
+```
+
+`Path` is the absolute path to the SKILL.md file on disk. `Name` and `Description` are read from the file's YAML frontmatter.
+
+## DiscoverSkillFiles
+
+Searches each root path for `<subdir>/SKILL.md` files exactly one level deep and returns their absolute paths.
+
+```go
+func DiscoverSkillFiles(rootPaths []string) ([]string, error)
+```
+
+<ParamField path="rootPaths" type="string[]" required>
+  List of directories to search. Each entry may start with `~/`, which is expanded to the current user's home directory. Paths that do not exist are silently skipped — no error is returned for missing roots.
+</ParamField>
+
+<Note>
+  Only the first level of subdirectories is searched. A `SKILL.md` placed directly in a root path, or nested two or more levels deep, is ignored.
+</Note>
+
+## GetSkillData
+
+Parses a single SKILL.md file and returns a populated `*Skill`.
+
+```go
+func GetSkillData(path string) (*Skill, error)
+```
+
+<ParamField path="path" type="string" required>
+  Absolute path to a SKILL.md file. The file must contain valid YAML frontmatter with at least `name` and `description` keys.
+</ParamField>
+
+The returned `*Skill` has its `Path`, `Name`, and `Description` fields set from the file path and frontmatter respectively.
+
+## LoadAllSkills
+
+Convenience wrapper that calls `DiscoverSkillFiles` followed by `GetSkillData` for every discovered file, returning all loaded skills in a single slice.
+
+```go
+func LoadAllSkills(rootPaths []string) ([]Skill, error)
+```
+
+<ParamField path="rootPaths" type="string[]" required>
+  List of root directories to search. Accepts the same values as `DiscoverSkillFiles`, including `~/`-prefixed paths and non-existent directories.
+</ParamField>
+
+The returned slice preserves the discovery order: skills from the first root path appear before those from the second, and within each root they appear in filesystem readdir order.
+
+## SKILL.md frontmatter format
+
+Each skill lives in its own subdirectory and must contain a SKILL.md file with YAML frontmatter:
+
+```yaml
+---
+name: "my-skill"
+description: "Short description shown in the system prompt"
+---
+Full skill body shown to the LLM when loaded via load_skill tool.
+```
+
+The body below the frontmatter block is the content delivered to the LLM when the `load_skill` tool is called. Keep the `description` short — it appears inline in the system prompt for every loaded skill.
+
+## Usage example
+
+```go
+loadedSkills, err := skills.LoadAllSkills([]string{
+    skills.DefaultGlobalRootPath,
+    skills.DefaultLocalRootPath,
+})
+if err != nil {
+    log.Fatal(err)
+}
+for _, s := range loadedSkills {
+    fmt.Printf("%s: %s\n", s.Name, s.Description)
+}
+```
+
+<Tip>
+  Pass both `DefaultGlobalRootPath` and `DefaultLocalRootPath` so project-specific skills can override or extend the user's global set without modifying shared files.
+</Tip>

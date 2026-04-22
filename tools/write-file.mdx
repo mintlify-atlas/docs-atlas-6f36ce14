@@ -1,0 +1,62 @@
+---
+title: "write_file tool"
+description: "Replaces the first occurrence of a string in an existing file, or creates a new file when it does not exist. Returns OK on success."
+---
+
+The `write_file` tool performs an in-place string replacement on a file: it finds the first occurrence of `oldString` and replaces it with `newString`. If the file does not exist yet, it creates the file with `newString` as its entire content.
+
+## Arguments
+
+<ParamField body="fileName" type="string" required>
+  Path to the file to modify or create. Accepts absolute or relative paths.
+</ParamField>
+
+<ParamField body="oldString" type="string" required>
+  The text to find and replace. Pass an empty string `""` when creating a new file — in that case `newString` becomes the full file content.
+</ParamField>
+
+<ParamField body="newString" type="string" required>
+  The replacement text. When creating a new file this is the complete initial content.
+</ParamField>
+
+## Return value
+
+Returns `"OK"` on success. On failure it returns:
+
+```
+ERROR: tools calling error: <message>
+```
+
+<Warning>
+Only the **first** occurrence of `oldString` is replaced. To make multiple replacements, call the tool once for each change.
+</Warning>
+
+<Info>
+If the file does not exist, it is created automatically with `newString` as its entire content. The value of `oldString` is ignored in this case.
+</Info>
+
+## Example: creating a new file
+
+```json
+{
+  "name": "write_file",
+  "arguments": {
+    "fileName": "hello.go",
+    "oldString": "",
+    "newString": "package main\n\nfunc main() {}\n"
+  }
+}
+```
+
+## Example: editing an existing file
+
+```json
+{
+  "name": "write_file",
+  "arguments": {
+    "fileName": "hello.go",
+    "oldString": "func main() {}",
+    "newString": "func main() {\n\tprintln(\"hello\")\n}"
+  }
+}
+```

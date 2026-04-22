@@ -1,97 +1,63 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "hrns: minimal AI agent harness for Go"
+description: "hrns is a lightweight Go framework for building AI coding agents. It provides a streaming tool-calling loop, OpenAI-compatible client, built-in tools, and a skills system."
 ---
 
-## Setting up
+hrns (harness) is the simplest agent harness for Go. It gives you a streaming agent loop with tool support, a pluggable tool interface, a skills system for loading contextual instructions, and a terminal UI — all in one minimal framework. Wire up any OpenAI-compatible API endpoint and start building agents in minutes.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build and run your first hrns agent in a few steps.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure the API key, base URL, and model via environment variables.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Core Concepts" icon="book" href="/concepts/agent-loop">
+    Understand the agent loop, tool interface, and skills system.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/loop/loop">
+    Explore the full Go package API for loop, openai, tools, and skills.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## How hrns works
 
-Everything you need to create world-class documentation.
+hrns runs a streaming agentic loop: it sends your messages to an OpenAI-compatible LLM, streams the response, detects tool calls, executes the requested tools, appends results to the conversation, and repeats — until the model stops requesting tools.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<Steps>
+  <Step title="Install hrns">
+    Clone the repository and build the binary with `go build`.
+  </Step>
+  <Step title="Set environment variables">
+    Export `HRNS_KEY`, `HRNS_BASE_URL`, and optionally `HRNS_SKIP_VERIFY`.
+  </Step>
+  <Step title="Run the TUI">
+    Launch `./hrns` and start chatting. Use `/model` to switch models, `/new` for a fresh session.
+  </Step>
+  <Step title="Extend with custom tools">
+    Implement the `loop.Tool` interface and pass your tools to `loop.New()`.
+  </Step>
+</Steps>
 
-## Need inspiration?
+## Key features
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Streaming agent loop" icon="arrows-rotate" href="/concepts/agent-loop">
+    Real-time streamed responses with automatic tool-call execution and multi-turn conversation support.
+  </Card>
+  <Card title="Pluggable tools" icon="plug" href="/concepts/tools">
+    Implement three methods — `Description()`, `Arguments()`, `Call()` — to add any custom tool.
+  </Card>
+  <Card title="Skills system" icon="graduation-cap" href="/concepts/skills">
+    Load markdown skill files from `~/.agents/skills` or `./.agents/skills` to inject domain knowledge.
+  </Card>
+  <Card title="Built-in tools" icon="toolbox" href="/tools/overview">
+    Ready-to-use tools for reading files, listing files, writing files, running commands, and fetching URLs.
+  </Card>
+  <Card title="OpenAI-compatible client" icon="circle-nodes" href="/api/openai/client">
+    Works with any API that speaks the OpenAI chat completions format, including local models.
+  </Card>
+  <Card title="Terminal UI" icon="terminal" href="/tui/overview">
+    Interactive multi-turn terminal interface with model switching and session management.
+  </Card>
+</CardGroup>

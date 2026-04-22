@@ -1,0 +1,107 @@
+{
+  "projectType": "framework",
+  "projectName": "hrns",
+  "projectDescription": "A minimal Go agent harness providing a streaming tool-calling loop, an OpenAI-compatible client, built-in tools, and a skills system for building AI coding assistants.",
+  "theme": "luma",
+  "primaryColor": "#00ADD8",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/agent-loop",
+              "concepts/tools",
+              "concepts/skills"
+            ]
+          },
+          {
+            "group": "Built-in Tools",
+            "pages": [
+              "tools/overview",
+              "tools/read-file",
+              "tools/list-files",
+              "tools/write-file",
+              "tools/run-command",
+              "tools/web-fetch"
+            ]
+          },
+          {
+            "group": "TUI",
+            "pages": [
+              "tui/overview",
+              "tui/commands"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "loop package",
+            "pages": [
+              "api/loop/loop",
+              "api/loop/tool",
+              "api/loop/chunk"
+            ]
+          },
+          {
+            "group": "openai package",
+            "pages": [
+              "api/openai/client",
+              "api/openai/messages",
+              "api/openai/chatcompletion"
+            ]
+          },
+          {
+            "group": "skills package",
+            "pages": [
+              "api/skills/overview",
+              "api/skills/tool"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Streaming agent loop with tool-calling support via OpenAI-compatible API",
+    "Pluggable tool interface — implement Description(), Arguments(), and Call() to add any tool",
+    "Skills system — load contextual markdown skill files from global (~/.agents/skills) or local (./.agents/skills) directories",
+    "Built-in tools: read_file, list_files, write_file, run_command, web_fetch",
+    "Terminal UI (TUI) with multi-turn conversation, model switching, and session management",
+    "Reasoning chunk support for models that emit reasoning tokens"
+  ],
+  "publicApiSurface": [
+    "loop.New(client, systemPrompt, tools) *Loop",
+    "loop.Loop.RunLoop(ctx, messages, model)",
+    "loop.Loop.Chunks() chan Chunk",
+    "loop.Loop.Messages() []openai.Message",
+    "loop.Tool interface (Description, Arguments, Call)",
+    "loop.NewSimpleTool(description, arguments, function) SimpleTool",
+    "loop.Chunk / ChunkType constants",
+    "openai.NewClient(...ClientOption) *Client",
+    "openai.WithBaseURL / WithAPIKey / WithHTTPClient",
+    "openai.Client.StreamChatCompletion(ctx, ChatCompletionRequest)",
+    "openai.SystemMessage / UserMessage / ToolMessage",
+    "skills.LoadAllSkills(rootPaths) ([]Skill, error)",
+    "skills.NewLoadSkillTool(skills) *LoadSkillTool",
+    "skills.DefaultGlobalRootPath / DefaultLocalRootPath",
+    "tools.ReadFileTool / ListFilesTool / WriteFileTool / CommandTool / WebFetchTool",
+    "tui.New() *TUIApp",
+    "tui.TUIApp.Run(ctx, loop.Loop)"
+  ]
+}

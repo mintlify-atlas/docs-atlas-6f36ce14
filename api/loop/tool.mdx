@@ -1,0 +1,96 @@
+---
+title: "loop package — Tool interface"
+description: "Define agent tools by implementing the Tool interface or using NewSimpleTool for function-backed tools with typed arguments."
+---
+
+The `Tool` interface is how you expose capabilities to the LLM. Each tool has a description the model uses to decide when to call it, a typed argument list that becomes the JSON schema in the request, and a `Call` function that runs when the model invokes it. Register tools by name in the `map[string]Tool` passed to `loop.New`.
+
+---
+
+## `Tool` interface
+
+```go
+type Tool interface {
+    Description() string
+    Arguments() []ToolArgument
+    Call(args map[string]any) string
+}
+```
+
+<Note>
+  `Call` always returns a string. Return errors as strings prefixed with `"ERROR:"` — the loop will forward the string to the LLM as the tool result, allowing the model to recover gracefully.
+</Note>
+
+---
+
+## `ToolArgument`
+
+```go
+type ToolArgument struct {
+    Name, Type string
+}
+```
+
+Represents a single argument the LLM must supply when calling a tool. Every argument defined in `Arguments()` is marked as **required** in the JSON schema sent to the model.
+
+`Type` must be a valid JSON Schema primitive:
+
+| Value | JSON Schema type |
+|-------|-----------------|
+| `"string"` | `string` |
+| `"number"` | `number` |
+| `"boolean"` | `boolean` |
+| `"object"` | `object` |
+| `"array"` | `array` |
+
+---
+
+## `loop.NewSimpleTool`
+
+```go
+func NewSimpleTool(description string, arguments []ToolArgument, function func(args map[string]any) string) SimpleTool
+```
+
+Creates a `SimpleTool` that implements `Tool` by delegating to a plain Go function. This is the recommended way to define tools without creating a named type.
+
+<ParamField path="description" type="string" required>
+  Natural-language description of what the tool does. Shown to the LLM to guide tool selection.
+</ParamField>
+
+<ParamField path="arguments" type="[]ToolArgument" required>
+  Ordered list of arguments the tool accepts. All arguments are marked required in the generated JSON schema.
+</ParamField>
+
+<ParamField path="function" type="func(args map[string]any) string" required>
+  The implementation function. Receives parsed arguments as `map[string]any`. Must return a string result or an `"ERROR: ..."` string on failure.
+</ParamField>
+
+<Tip>
+  Always type-assert arguments defensively. The model may occasionally pass an unexpected type — returning a clear `"ERROR:"` string lets the LLM correct itself on the next turn.
+</Tip>
+
+---
+
+## Example
+
+```go
+var EchoTool = loop.NewSimpleTool(
+    "Echoes back the input text",
+    []loop.ToolArgument{{Name: "text", Type: "string"}},
+    func(args map[string]any) string {
+        text, ok := args["text"].(string)
+        if !ok {
+            return "ERROR: text argument must be a string"
+        }
+        return text
+    },
+)
+```
+
+Register the tool when creating the agent:
+
+```go
+agnt := loop.New(client, systemPrompt, map[string]loop.Tool{
+    "echo": EchoTool,
+})
+```

@@ -1,0 +1,58 @@
+---
+title: "list_files tool"
+description: "Lists files inside a directory that match a glob pattern and returns their paths as a JSON array. Supports recursive patterns such as **/*.go."
+---
+
+The `list_files` tool searches a root directory for files matching a glob pattern and returns a JSON array of matching paths. It uses Go's `fs.Glob` under the hood, so pattern syntax follows the rules of `filepath.Match`.
+
+## Arguments
+
+<ParamField body="dir" type="string" required>
+  Root directory to search in. Use `"."` for the current working directory or supply an absolute path.
+</ParamField>
+
+<ParamField body="globPattern" type="string" required>
+  Glob pattern to match against (e.g., `*.go`, `*.md`, `loop/*.go`). Pattern is applied relative to `dir` using Go's `fs.Glob`, which follows `path.Match` rules — single `*` matches within one path element only.
+</ParamField>
+
+## Return value
+
+On success, returns a JSON array of matching file paths, each prefixed with `dir`:
+
+```
+["./main.go","./loop/loop.go","./tools/tools.go"]
+```
+
+On failure the tool returns:
+
+```
+ERROR: tools calling error: <message>
+```
+
+<Note>
+`list_files` uses Go's `fs.Glob`, which follows `path.Match` pattern rules. The `*` wildcard matches any sequence of non-separator characters within a single path element. There is no `**` double-star support — to search subdirectories, use a pattern like `subdir/*.go` or call the tool multiple times for different directory levels.
+</Note>
+
+## Example LLM call
+
+```json
+{
+  "name": "list_files",
+  "arguments": {"dir": ".", "globPattern": "*.go"}
+}
+```
+
+Example output:
+
+```
+["./main.go"]
+```
+
+To list Go files in a subdirectory:
+
+```json
+{
+  "name": "list_files",
+  "arguments": {"dir": ".", "globPattern": "loop/*.go"}
+}
+```

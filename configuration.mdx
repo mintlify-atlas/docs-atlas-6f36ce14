@@ -1,0 +1,56 @@
+---
+title: "Configure hrns"
+description: "Set environment variables to connect hrns to any OpenAI-compatible API, configure TLS settings, and choose a default model for your agent sessions."
+---
+
+hrns is configured entirely through environment variables — there are no config files to manage. Set these variables in your shell before running `./hrns`, or add them to your shell profile so they persist across sessions.
+
+## Environment variables
+
+<ParamField path="HRNS_KEY" type="string" required>
+  API key for your LLM provider. Sent as a `Bearer` token in the `Authorization` header on every request.
+</ParamField>
+
+<ParamField path="HRNS_BASE_URL" type="string" required>
+  Base URL for any OpenAI-compatible chat completions API. The client appends `/chat/completions` to this value automatically. Trailing slashes are stripped. Set to `https://api.openai.com/v1` to use the OpenAI API directly.
+</ParamField>
+
+<ParamField path="HRNS_SKIP_VERIFY" type="string" default="false">
+  Set to `"true"` to disable TLS certificate verification. Useful when connecting to a locally-hosted model with a self-signed certificate.
+</ParamField>
+
+```bash
+export HRNS_KEY=your-api-key
+export HRNS_BASE_URL=https://api.openai.com/v1
+export HRNS_SKIP_VERIFY=false
+```
+
+## Default model
+
+The TUI defaults to `kimi-k2.6` on startup. You can change the active model at any time during a session without restarting the binary:
+
+```text
+/model gpt-4o
+```
+
+The new model is used for all subsequent messages in that session. Run `/help` in the TUI to see all available commands.
+
+## Using a local or alternative model
+
+Because hrns targets any OpenAI-compatible endpoint, you can point it at a locally-hosted model (for example, one served by Ollama or LM Studio) by changing `HRNS_BASE_URL`:
+
+```bash
+export HRNS_BASE_URL=http://localhost:11434/v1
+export HRNS_KEY=ollama   # many local servers accept any non-empty key
+export HRNS_SKIP_VERIFY=false
+```
+
+Then set the model name to match what your local server exposes:
+
+```text
+/model llama3.2
+```
+
+<Warning>
+  Only set `HRNS_SKIP_VERIFY=true` for local development or trusted private networks. Disabling TLS verification in production exposes your API key and all agent traffic to interception.
+</Warning>

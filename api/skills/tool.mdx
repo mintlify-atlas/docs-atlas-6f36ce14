@@ -1,0 +1,95 @@
+---
+title: "skills package — LoadSkillTool"
+description: "LoadSkillTool implements loop.Tool to let the LLM fetch the full body of any loaded skill by name at runtime."
+---
+
+`LoadSkillTool` is a `loop.Tool` implementation that the agent loop can call when the LLM wants to read the complete instructions for a named skill. Because the tool reads the SKILL.md file from disk on every invocation, skill content can be updated without restarting the agent process.
+
+## LoadSkillTool struct
+
+```go
+type LoadSkillTool struct {
+    // unexported fields
+}
+```
+
+`LoadSkillTool` implements the `loop.Tool` interface. Construct it with `NewLoadSkillTool` and register it in the agent loop's tool map under the key `"load_skill"`.
+
+## Constructor
+
+```go
+func NewLoadSkillTool(skills []Skill) *LoadSkillTool
+```
+
+<ParamField path="skills" type="[]Skill" required>
+  The slice of already-loaded skills, typically produced by `LoadAllSkills`. Each `Skill` must have its `Name` and `Path` fields set. The tool matches against `Name` and reads from `Path` when `Call` is invoked.
+</ParamField>
+
+## Methods
+
+### Description
+
+```go
+func (t *LoadSkillTool) Description() string
+```
+
+Returns `"Loads full skill body by its name"`. This string is passed to the LLM in the tool manifest.
+
+### Arguments
+
+```go
+func (t *LoadSkillTool) Arguments() []loop.ToolArgument
+```
+
+Returns a single argument descriptor:
+
+| Name | Type |
+|---|---|
+| `name` | `string` |
+
+### Call
+
+```go
+func (t *LoadSkillTool) Call(args map[string]any) string
+```
+
+Looks up the skill by the `name` argument, reads the SKILL.md file at its stored path, and returns the raw file contents as a string.
+
+**Return values:**
+
+| Condition | Return value |
+|---|---|
+| Skill found and file read successfully | Full contents of the SKILL.md file |
+| `name` does not match any loaded skill | `"ERROR: unknown skill name"` |
+| File cannot be read | `"ERROR: loading skill file: ..."` |
+| `name` argument is not a string | `"ERROR: loading skill argument: ..."` |
+
+<Note>
+  The file is read from disk on every `Call` invocation. You can edit a SKILL.md file and the next call will return the updated content without restarting the agent.
+</Note>
+
+## Wiring example
+
+The following example shows how to load skills and wire `LoadSkillTool` into an agent loop alongside other tools:
+
+```go
+loadedSkills, err := skills.LoadAllSkills([]string{
+    skills.DefaultGlobalRootPath,
+    skills.DefaultLocalRootPath,
+})
+if err != nil {
+    log.Fatalf("failed to load skills: %v", err)
+}
+
+loadSkillTool := skills.NewLoadSkillTool(loadedSkills)
+
+agnt := loop.New(client, systemPrompt, map[string]loop.Tool{
+    "load_skill":  loadSkillTool,
+    "read_file":   tools.ReadFileTool,
+    // ... other tools
+})
+```
+
+<Tip>
+  Register the tool under the key `"load_skill"` to match the name referenced in the system prompt. If you change the key, update the system prompt accordingly so the LLM knows what to call.
+</Tip>

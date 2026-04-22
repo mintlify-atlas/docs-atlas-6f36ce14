@@ -1,0 +1,90 @@
+---
+title: "Building custom tools for hrns"
+description: "Define the Tool interface, implement tools with NewSimpleTool or directly, and register them so the agent can call them during the loop."
+---
+
+Tools are functions the LLM can invoke during a loop iteration. The `loop` package defines a `Tool` interface that every tool must satisfy. hrns serializes each tool's metadata into the OpenAI function-calling schema automatically, so you only need to describe arguments and implement a `Call` function that accepts a `map[string]any` and returns a string.
+
+## The Tool interface
+
+```go
+type Tool interface {
+    Description() string
+    Arguments() []ToolArgument
+    Call(args map[string]any) string
+}
+```
+
+Arguments are described with `ToolArgument`, a simple struct that carries a name and a JSON Schema type:
+
+```go
+type ToolArgument struct {
+    Name, Type string
+}
+```
+
+All arguments are treated as required. The `Type` field maps directly to a JSON Schema primitive type such as `"string"`, `"number"`, or `"boolean"`.
+
+## Using NewSimpleTool
+
+`NewSimpleTool` is the easiest way to create a tool. It wraps a plain Go function and eliminates boilerplate for tools that do not need internal state.
+
+```go
+var GreetTool = loop.NewSimpleTool(
+    "Greets the user by name",
+    []loop.ToolArgument{
+        {Name: "name", Type: "string"},
+    },
+    func(args map[string]any) string {
+        name, ok := args["name"].(string)
+        if !ok {
+            return "ERROR: name must be a string"
+        }
+        return "Hello, " + name + "!"
+    },
+)
+```
+
+The built-in tools in the `tools` package — `ReadFileTool`, `ListFilesTool`, `WriteFileTool`, `CommandTool`, and `WebFetchTool` — are all created with `NewSimpleTool`.
+
+## Implementing the Tool interface directly
+
+For tools that require internal state or dependencies injected at construction time, implement the interface on a struct. `LoadSkillTool` in the `skills` package is an example of this pattern.
+
+```go
+type MyTool struct {
+    data []string
+}
+
+func (t *MyTool) Description() string {
+    return "Does something with internal state"
+}
+
+func (t *MyTool) Arguments() []loop.ToolArgument {
+    return []loop.ToolArgument{{Name: "query", Type: "string"}}
+}
+
+func (t *MyTool) Call(args map[string]any) string {
+    // implement your logic here
+    return "result"
+}
+```
+
+## Registering tools
+
+Pass a `map[string]loop.Tool` as the third argument to `loop.New`. The map key is the name the model sees and uses when requesting a tool call.
+
+```go
+agnt := loop.New(client, systemPrompt, map[string]loop.Tool{
+    "greet":     GreetTool,
+    "read_file": tools.ReadFileTool,
+})
+```
+
+<Tip>
+Tool names must be unique within the map. Choose names that are descriptive and unambiguous — the model uses the name and the description to decide when to invoke each tool.
+</Tip>
+
+<Note>
+`Call` always returns a string. If your tool produces structured data, serialize it as JSON before returning. The loop appends the raw return value to the message history as a tool result message.
+</Note>

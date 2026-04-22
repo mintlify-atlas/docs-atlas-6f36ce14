@@ -1,0 +1,37 @@
+---
+title: "run_command tool"
+description: "Runs an arbitrary shell command and returns its combined stdout and stderr output as a string. Behavior varies by operating system."
+---
+
+The `run_command` tool executes a shell command and returns the combined stdout and stderr output as a plain string. It is a thin wrapper around Go's `exec.Cmd` with `CombinedOutput`, making it suitable for build steps, tests, linting, or any other scripted task.
+
+## Arguments
+
+<ParamField body="command" type="string" required>
+  The shell command to execute. The full command string is passed to the system shell, so pipes, redirections, and shell built-ins all work.
+</ParamField>
+
+## Return value
+
+Returns the combined stdout and stderr of the process as a string. On a non-zero exit code or execution error the tool returns:
+
+```
+ERROR: tools calling error: <message>
+```
+
+<Note>
+On **Windows** the command is run via `cmd /C <command>`. On **Linux and macOS** it is run via `/bin/sh -c <command>`.
+</Note>
+
+<Warning>
+This tool executes arbitrary commands on the host machine. Only use `run_command` with trusted LLM providers and in environments where unrestricted shell access is acceptable.
+</Warning>
+
+## Example LLM call
+
+```json
+{
+  "name": "run_command",
+  "arguments": {"command": "go test ./..."}
+}
+```

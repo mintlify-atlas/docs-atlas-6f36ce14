@@ -1,0 +1,84 @@
+---
+title: "loop package — Chunk types"
+description: "Chunk is the event type streamed on the Chunks() channel during RunLoop, carrying text, tool names, arguments, or a terminal end signal."
+---
+
+Chunks are the values streamed on the `Chunks()` channel during `RunLoop`. Each chunk represents a discrete event in the agent's execution — a fragment of the assistant's response, a tool invocation, an error, or the signal that the run is complete. Consume chunks in a `for` loop or a `select` statement running concurrently with `RunLoop`.
+
+---
+
+## `Chunk` struct
+
+```go
+type Chunk struct {
+    Type     ChunkType
+    Text     string
+    ToolName string
+    ToolArgs map[string]any
+}
+```
+
+Not all fields are populated for every `ChunkType`. The table below shows which fields carry meaningful data per type:
+
+| `ChunkType` | `Text` | `ToolName` | `ToolArgs` |
+|---|---|---|---|
+| `ChunkTypeMessage` | streamed text fragment | — | — |
+| `ChunkTypeReasoning` | reasoning/thinking text | — | — |
+| `ChunkTypeError` | error message | — | — |
+| `ChunkTypeToolCallStart` | — | tool name | call arguments |
+| `ChunkTypeToolCallError` | error message | tool name | — |
+| `ChunkTypeToolCallResult` | result string | tool name | — |
+| `ChunkTypeEnd` | — | — | — |
+
+<Note>
+  Fields not listed for a given type are zero values — empty string or `nil` map. Do not rely on them being non-zero.
+</Note>
+
+---
+
+## Constructor functions
+
+Each constructor sets exactly the fields that `RunLoop` populates, as shown in the table above.
+
+| Constructor | Produced `ChunkType` |
+|---|---|
+| `NewChunkMessage(text string) Chunk` | `ChunkTypeMessage` |
+| `NewChunkReasoning(text string) Chunk` | `ChunkTypeReasoning` |
+| `NewChunkError(text string) Chunk` | `ChunkTypeError` |
+| `NewChunkToolCallStart(name string, args map[string]any) Chunk` | `ChunkTypeToolCallStart` |
+| `NewChunkToolCallError(name string, error string) Chunk` | `ChunkTypeToolCallError` |
+| `NewChunkToolCallResult(name string, result string) Chunk` | `ChunkTypeToolCallResult` |
+| `NewChunkEnd() Chunk` | `ChunkTypeEnd` |
+
+These constructors are primarily used inside `RunLoop` itself, but are exported so you can use them when implementing test doubles or custom harnesses.
+
+---
+
+## Handling all chunk types
+
+```go
+for chunk := range agnt.Chunks() {
+    switch chunk.Type {
+    case loop.ChunkTypeMessage:
+        fmt.Print(chunk.Text)
+    case loop.ChunkTypeReasoning:
+        fmt.Printf("[thinking] %s", chunk.Text)
+    case loop.ChunkTypeToolCallStart:
+        fmt.Printf("\nCalling %s(%v)\n", chunk.ToolName, chunk.ToolArgs)
+    case loop.ChunkTypeToolCallResult:
+        fmt.Printf("→ %s\n", chunk.Text)
+    case loop.ChunkTypeError:
+        fmt.Fprintf(os.Stderr, "error: %s\n", chunk.Text)
+    case loop.ChunkTypeEnd:
+        return
+    }
+}
+```
+
+<Warning>
+  Always handle `ChunkTypeEnd` and return or break from the loop. `RunLoop` sends exactly one `ChunkTypeEnd` chunk; failing to exit will leave your goroutine blocked on the channel.
+</Warning>
+
+<Tip>
+  `ChunkTypeMessage` chunks arrive as small streaming fragments — concatenate them to build the full assistant response, or print them directly for a streaming UI effect.
+</Tip>

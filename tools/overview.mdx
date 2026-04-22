@@ -1,0 +1,52 @@
+---
+title: "Built-in tools overview"
+description: "The hrns tools package ships five ready-to-use tools for reading files, listing paths, writing files, running shell commands, and fetching URLs."
+---
+
+The `tools` package provides five ready-to-use implementations of the `loop.Tool` interface. Each tool accepts a `map[string]any` of arguments and returns a plain string result, making them straightforward to register with `loop.New` and pass to any compatible LLM client.
+
+<CardGroup cols={3}>
+  <Card title="read_file" icon="file" href="/tools/read-file">
+    Read any file from the filesystem and return its contents.
+  </Card>
+  <Card title="list_files" icon="folder-open" href="/tools/list-files">
+    List files matching a glob pattern inside a directory.
+  </Card>
+  <Card title="write_file" icon="file-pen" href="/tools/write-file">
+    Replace text in a file, or create it if it does not exist.
+  </Card>
+  <Card title="run_command" icon="terminal" href="/tools/run-command">
+    Execute an arbitrary shell command and capture its output.
+  </Card>
+  <Card title="web_fetch" icon="globe" href="/tools/web-fetch">
+    Fetch raw content from any HTTP or HTTPS URL.
+  </Card>
+</CardGroup>
+
+## Tool reference
+
+| Tool name (key in map) | Go variable | Description |
+|------------------------|-------------|-------------|
+| `read_file`   | `tools.ReadFileTool`   | Reads a file from the filesystem |
+| `list_files`  | `tools.ListFilesTool`  | Lists files in a directory using a glob pattern |
+| `write_file`  | `tools.WriteFileTool`  | Replaces the first occurrence of a string in a file (or creates it) |
+| `run_command` | `tools.CommandTool`    | Runs a shell command |
+| `web_fetch`   | `tools.WebFetchTool`   | Fetches content from a URL |
+
+## Registering all built-in tools
+
+Pass each tool variable as a value in the map given to `loop.New`. The map key is the name the LLM uses when calling the tool.
+
+```go
+agnt := loop.New(client, systemPrompt, map[string]loop.Tool{
+    "read_file":   tools.ReadFileTool,
+    "list_files":  tools.ListFilesTool,
+    "write_file":  tools.WriteFileTool,
+    "run_command": tools.CommandTool,
+    "web_fetch":   tools.WebFetchTool,
+})
+```
+
+<Warning>
+`run_command` executes arbitrary shell commands on the host machine. Only use it with trusted LLM providers and in environments where arbitrary code execution is acceptable.
+</Warning>

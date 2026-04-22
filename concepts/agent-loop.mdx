@@ -1,0 +1,86 @@
+---
+title: "The hrns agent loop"
+description: "A streaming tool-calling loop that sends messages to an LLM, handles tool calls automatically, and yields structured chunks as output."
+---
+
+The agent loop is the core runtime of hrns. It manages a conversation with an LLM over streaming chat completions, automatically dispatches tool calls the model requests, appends results back into the message history, and repeats until the model produces a response with no further tool calls. You interact with it by reading from a `Chunks()` channel while `RunLoop` runs in a goroutine.
+
+## How it works
+
+<Steps>
+  <Step title="Create a Loop">
+    Instantiate a `Loop` with your OpenAI-compatible client, a system prompt, and a map of tools keyed by the name the model will use.
+
+    ```go
+    agnt := loop.New(client, systemPrompt, tools)
+    ```
+  </Step>
+
+  <Step title="Run the loop in a goroutine">
+    Call `RunLoop` in a goroutine. It blocks until the loop finishes, so your main goroutine can read from the channel concurrently.
+
+    ```go
+    go agnt.RunLoop(ctx, messages, "gpt-4o")
+    ```
+  </Step>
+
+  <Step title="Stream chat completions">
+    The loop sends the current message history and tool definitions to the LLM via streaming chat completions. Each token arrives as a delta and is forwarded as a `Chunk` on the channel.
+  </Step>
+
+  <Step title="Receive chunks">
+    Read every `Chunk` from `agnt.Chunks()` and handle it by type. The channel stays open until `ChunkTypeEnd` is sent.
+  </Step>
+
+  <Step title="Execute tool calls">
+    When the model requests one or more tool calls, the loop looks up each tool by name, unmarshals the JSON arguments, and calls `tool.Call(args)`. A `ChunkTypeToolCallStart` chunk is sent before the call and a `ChunkTypeToolCallResult` chunk is sent after.
+  </Step>
+
+  <Step title="Repeat until done">
+    Tool results are appended to the message history and the loop sends a new streaming request. This cycle repeats until the model produces a response with no tool calls.
+  </Step>
+
+  <Step title="End signal">
+    The loop sends a `ChunkTypeEnd` chunk and `RunLoop` returns. You can retrieve the final message history with `agnt.Messages()`.
+  </Step>
+</Steps>
+
+## Full lifecycle example
+
+```go
+agnt := loop.New(client, systemPrompt, tools)
+
+go agnt.RunLoop(ctx, messages, "gpt-4o")
+
+for chunk := range agnt.Chunks() {
+    switch chunk.Type {
+    case loop.ChunkTypeMessage:
+        fmt.Print(chunk.Text)
+    case loop.ChunkTypeToolCallStart:
+        fmt.Printf("Calling tool: %s\n", chunk.ToolName)
+    case loop.ChunkTypeEnd:
+        break
+    }
+}
+
+// After loop ends, get updated message history
+messages = agnt.Messages()
+```
+
+## Chunk types
+
+Every value sent on the `Chunks()` channel is a `Chunk` struct with a `Type` field, a `Text` field, a `ToolName` field, and a `ToolArgs` map. The constants below are defined in `loop/chunk.go`.
+
+| Constant | Value | When it is sent | Populated fields |
+|---|---|---|---|
+| `ChunkTypeMessage` | `"message"` | Each streamed content token from the model | `Text` |
+| `ChunkTypeReasoning` | `"reasoning"` | Each streamed reasoning token (e.g. `o1` models) | `Text` |
+| `ChunkTypeError` | `"error"` | A fatal streaming or argument error | `Text` (error message) |
+| `ChunkTypeToolCallStart` | `"tool_call_start"` | Immediately before a tool is called | `ToolName`, `ToolArgs` |
+| `ChunkTypeToolCallError` | `"tool_call_error"` | Tool not found or argument unmarshal failed | `ToolName`, `Text` |
+| `ChunkTypeToolCallResult` | `"tool_call_result"` | Immediately after a tool returns | `ToolName`, `Text` (result) |
+| `ChunkTypeEnd` | `"end"` | Once after the loop exits, no more tool calls | — |
+
+<Info>
+`RunLoop` blocks inside the goroutine and sends every chunk synchronously on an unbuffered channel. You must be reading from `agnt.Chunks()` concurrently, otherwise the loop will stall waiting for the channel to be drained.
+</Info>

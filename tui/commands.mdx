@@ -1,0 +1,82 @@
+---
+title: "TUI slash commands"
+description: "The hrns TUI supports slash commands prefixed with / that control your session — switching models, resetting history, and listing help — without sending a message to the LLM."
+---
+
+The hrns TUI supports slash commands prefixed with `/` that control the session without sending a message to the LLM. Type any of the commands below at the input prompt and press Enter. All other input is treated as a user message and forwarded to the agent.
+
+## Available commands
+
+| Command | Description |
+|---|---|
+| `/model <model>` | Change the active model. Takes effect on the next message sent. |
+| `/new` | Start a fresh conversation session. Clears all message history. |
+| `/help` | Print a list of available commands to the terminal. |
+
+### `/model <model>`
+
+Switches the model used for all subsequent messages in the current session. The change takes effect immediately on the next user message — no restart required.
+
+```text
+/model gpt-4o
+/model claude-3-5-sonnet-20241022
+```
+
+After running `/model`, the TUI confirms the change:
+
+```text
+Model changed to gpt-4o
+```
+
+### `/new`
+
+Clears the entire message history and starts a fresh session. Use this when you want to begin a new conversation without losing your model selection or restarting the process.
+
+```text
+/new
+```
+
+The TUI confirms with:
+
+```text
+New session started
+```
+
+### `/help`
+
+Prints the list of available commands directly to the terminal. Useful when you forget a command name mid-session.
+
+```text
+/help
+```
+
+Output:
+
+```text
+Available commands:
+/model <model> - change model
+/new - start new session
+/help - show this help
+```
+
+## Unknown commands
+
+Any input starting with `/` that does not match a known command prints an error and does not send a message to the LLM:
+
+```text
+/foo
+```
+
+```text
+unknown command: /foo
+```
+
+<Tip>
+  Use `/model` to quickly switch between providers or models mid-session. This is particularly useful for comparing responses to the same question across different models — run `/new` between tests to keep the history clean.
+</Tip>
+
+## Non-interactive mode
+
+<Note>
+  The `hrns exec "<message>"` command for running a single non-interactive message is planned but not yet implemented. For now, all interaction with hrns goes through the interactive TUI loop.
+</Note>

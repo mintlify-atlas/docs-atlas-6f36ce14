@@ -1,0 +1,121 @@
+---
+title: "loop package — Loop type"
+description: "The Loop type drives the hrns agent: it holds message history, a tool registry, and an unbuffered channel for streaming Chunk events."
+---
+
+`Loop` is the core type in the `hrns` `loop` package. It manages the agent's message history, tool registry, and streaming communication channel. Create one with `New`, start the agent in a goroutine with `RunLoop`, and consume events from `Chunks()` — all three work together as a unit.
+
+---
+
+## `loop.New`
+
+```go
+func New(openAIClient ChatCompletionStreamer, systemPrompt string, tools map[string]Tool) *Loop
+```
+
+Creates and returns a new `Loop`. The channel returned by `Chunks()` is created here and remains valid for the lifetime of the `Loop`.
+
+<ParamField path="openAIClient" type="ChatCompletionStreamer" required>
+  Any client implementing `StreamChatCompletion`. The `openai.Client` from this module satisfies this interface.
+</ParamField>
+
+<ParamField path="systemPrompt" type="string" required>
+  System message prepended to every conversation before the first user message is sent.
+</ParamField>
+
+<ParamField path="tools" type="map[string]Tool" required>
+  Map of tool name to `Tool` implementation. Pass `nil` or an empty map when no tools are needed.
+</ParamField>
+
+---
+
+## `(*Loop).RunLoop`
+
+```go
+func (a *Loop) RunLoop(ctx context.Context, messages []openai.Message, model string)
+```
+
+Runs the agentic loop. Sends messages to the LLM, processes streaming deltas, dispatches tool calls, and emits `Chunk` values on the `Chunks()` channel. Sends a `ChunkTypeEnd` chunk when complete, then returns.
+
+<Warning>
+  `RunLoop` blocks until the agent finishes. Always call it in a goroutine, and read from `Chunks()` concurrently — the channel is unbuffered, so `RunLoop` will deadlock if nothing is consuming it.
+</Warning>
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the LLM stream. Cancel it to abort an in-flight run.
+</ParamField>
+
+<ParamField path="messages" type="[]openai.Message" required>
+  Initial conversation messages, typically one or more `openai.UserMessage(...)` values. The system prompt is prepended automatically — do not include it here.
+</ParamField>
+
+<ParamField path="model" type="string" required>
+  Model identifier passed directly to the LLM, e.g. `"gpt-4o"` or `"o3-mini"`.
+</ParamField>
+
+---
+
+## `(*Loop).Chunks`
+
+```go
+func (a *Loop) Chunks() chan Chunk
+```
+
+Returns the unbuffered channel on which `Chunk` values are sent during `RunLoop`. Read from this channel concurrently with `RunLoop` to receive streamed events.
+
+<Note>
+  The channel is created once by `New` and reused across calls. Do not close it yourself — `RunLoop` signals completion via a `ChunkTypeEnd` chunk.
+</Note>
+
+---
+
+## `(*Loop).Messages`
+
+```go
+func (a *Loop) Messages() []openai.Message
+```
+
+Returns the accumulated message history after `RunLoop` completes. The slice includes the system prompt, all user messages, every assistant response, and all tool call results in order.
+
+<Tip>
+  Save the returned slice and pass it as the `messages` argument to the next `RunLoop` call to maintain conversation continuity across turns.
+</Tip>
+
+---
+
+## `ChatCompletionStreamer` interface
+
+```go
+type ChatCompletionStreamer interface {
+    StreamChatCompletion(context.Context, openai.ChatCompletionRequest) (<-chan openai.StreamEvent, error)
+}
+```
+
+The single interface `Loop` uses to talk to an LLM. The `openai.Client` from this module implements it. You can also implement it yourself in tests or to wrap a different provider.
+
+---
+
+## Full usage example
+
+```go
+agnt := loop.New(client, "You are a helpful assistant.", map[string]loop.Tool{
+    "read_file": tools.ReadFileTool,
+})
+
+messages := []openai.Message{
+    openai.UserMessage("List the Go files in this project."),
+}
+
+go agnt.RunLoop(ctx, messages, "gpt-4o")
+
+for chunk := range agnt.Chunks() {
+    if chunk.Type == loop.ChunkTypeMessage {
+        fmt.Print(chunk.Text)
+    }
+    if chunk.Type == loop.ChunkTypeEnd {
+        break
+    }
+}
+
+messages = agnt.Messages() // persist history for the next turn
+```
